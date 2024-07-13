@@ -8,7 +8,6 @@ import random
 import numpy as np
 from pathlib import Path
 from typing import Optional, Dict
-from langchain.schema import Message
 from LLMChatBot import LLMChatBot
 from FaissStorage import AdvancedVectorStore
 sys.path.append(str(Path(__file__).parent.parent.parent.parent)) # protected
@@ -32,11 +31,12 @@ class CodeImprover:
         self.python_mark: Optional[str] = r"```(python|py|)\n(?P<code>[\s\S]+?)\n```"
         self.llm = LLMChatBot(email=os.getenv("EMAIL"), password=os.getenv("PASSWD"))
         self.avs = AdvancedVectorStore(email=os.getenv("EMAIL"), password=os.getenv("PASSWD"))
+        self.current_conversation
         self.avs.logger.info("Init!")
 
     @staticmethod
     def read_code(text: str, code_mark: str) -> Optional[str]:
-        match = re.search(code_mark, text)
+        match = re.search(code_mark, text.content)
         if match:
             return match.group("code")
         return None
@@ -101,11 +101,11 @@ class CodeImprover:
                                        ```py
                                        {code}
                                        ```"""
-                
-                results = self.llm(user_task_prompt)
+                # Result of the llm predicting improvements
+                results = str(self.llm(user_task_prompt))
                 
                 if isinstance(results, list):
-                    results = ''.join([str(msg) for msg in results])
+                    results = str(''.join([str(msg) for msg in results]))
                 
                 code = self.read_code(results, self.python_mark)
                 

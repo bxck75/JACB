@@ -85,6 +85,10 @@ class ChatbotApp(ThemedTk):
         
         self.create_widgets()
     
+
+
+
+
     def create_widgets(self):
         self.notebook = ttk.Notebook(self)
         self.notebook.pack(expand=True, fill='both', padx=10, pady=10)
@@ -104,13 +108,13 @@ class ChatbotApp(ThemedTk):
         mode='basic'
         k=5
         similarity_threshold=0.75
-        retriever = self.set_current_retriever(mode=mode, k=k, sim_rate=similarity_threshold)
+        retriever = self.StoreManager.set_current_retriever(mode=mode, k=k, sim_rate=similarity_threshold)
         # Chat display
         self.vs_chat_display = scrolledtext.ScrolledText(tab, wrap=tk.WORD, bg='#1e1e1e', fg='white')
         self.vs_chat_display.pack(expand=True, fill='both', padx=10, pady=10)
         
         # Input field
-        self.vs_input = ttk.Entry(tab, width=50)
+        self.vs_input = ttk.Entry(tab, width=50, justify='center')
         self.vs_input.pack(side=tk.LEFT, padx=10, pady=10)
         
         # Send button
