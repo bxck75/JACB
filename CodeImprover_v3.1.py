@@ -6,8 +6,10 @@ import coverage
 import random
 import numpy as np
 import subprocess
+from hugchat import hugchat
 from pathlib import Path
 from typing import Optional
+from rich import print as rp
 from LLMChatBot import LLMChatBot
 from FaissStorage import AdvancedVectorStore
 from typing import List, Dict, Any, Optional, Union
@@ -33,17 +35,20 @@ class CodeImprover:
             "java": r"```java\n(?P<code>[\s\S]+?)\n```",
             "cpp": r"```(?:cpp|c\+\+)\n(?P<code>[\s\S]+?)\n```"
         }
+
         self.llm = LLMChatBot(
             email=os.getenv("EMAIL"), 
             password=os.getenv("PASSWD"),
             default_llm = 1,
             default_system_prompt = 'default_rag_prompt')
-        self.llm = hugchat.ChatBot(cookies=self.cookies.get_dict(), default_llm=default_llm,system_prompt=prompts[default_system_prompt])
+        
+       
         self.avs = AdvancedVectorStore(email=os.getenv("EMAIL"), password=os.getenv("PASSWD"))
         self.avs.logger.info("CodeImprover initialized")
 
-    @staticmethod
+    
     def read_code(text: str, code_mark: str) -> Optional[str]:
+        rp(text)
         match = re.search(code_mark, text)
         return match.group("code") if match else None
 
