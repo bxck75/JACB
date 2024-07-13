@@ -22,16 +22,25 @@ from sklearn.decomposition import PCA
 from playsound import playsound
 from hugchat import hugchat
 from hugchat.login import Login
-import plotly.graph_objs as go
-from langchain.chains import LLMChain
 from langchain_core.documents import Document
+
+from langchain_community.llms.huggingface_text_gen_inference import (
+        HuggingFaceTextGenInference,
+    )
 from langchain_community.llms.huggingface_endpoint import HuggingFaceEndpoint
 from langchain_community.llms.huggingface_hub import HuggingFaceHub
 from langchain.chains.combine_documents import create_stuff_documents_chain
 from langchain.chains import create_retrieval_chain
+from langchain_community.document_loaders import (
+    PyPDFLoader,
+    UnstructuredHTMLLoader,
+    UnstructuredWordDocumentLoader,
+    TextLoader,
+    PythonLoader
+)
 from langchain.retrievers import TimeWeightedVectorStoreRetriever
 from langchain_community.docstore.in_memory import InMemoryDocstore
-from langchain.text_splitter import (RecursiveCharacterTextSplitter, Language)
+from langchain.text_splitter import RecursiveCharacterTextSplitter, Language,CharacterTextSplitter
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_community.vectorstores import FAISS
 from langchain.vectorstores.base import VectorStore
@@ -40,14 +49,11 @@ from langchain.retrievers.self_query.base import SelfQueryRetriever
 from langchain.retrievers.document_compressors import LLMChainExtractor, DocumentCompressorPipeline
 from langchain_community.document_transformers import EmbeddingsRedundantFilter
 from langchain.retrievers.document_compressors import EmbeddingsFilter
-from langchain_community.document_loaders import (
-    PyPDFLoader,
-    UnstructuredHTMLLoader,
-    UnstructuredWordDocumentLoader,
-    TextLoader,
-    PythonLoader
-)
+from langchain_community.llms.self_hosted_hugging_face import SelfHostedHuggingFaceLLM
+import plotly.graph_objs as go
 
+
+from langchain.chains import LLMChain
 # Load environment variables
 load_dotenv(find_dotenv())
 warnings.filterwarnings("ignore")
@@ -253,10 +259,15 @@ class AdvancedVectorStore:
             model_kwargs={'device': self.device},
             encode_kwargs={'normalize_embeddings': normalize_embeddings}
         )
-        self.TodoParserBot = LLMChatBot(email, password, default_system_prompt= 'todo_parser_prompt') if email and password else None
-        self.chatbot_llm = LLMChatBot(email, password, default_system_prompt= 'story_teller_prompt') if email and password else None
-        self.advanced_rag_chatbot = LLMChatBot(email, password, default_system_prompt= 'default_rag_prompt') if email and password else None
 
+        self.AvancedRagChatBot = HuggingFaceHub(repo_id="Qwen/Qwen2-0.5B-Instruct", model_kwargs={"temperature": 0.5, "max_length": 512})
+        self.llm = HuggingFaceHub(repo_id="google-t5/t5-small", model_kwargs={"temperature": 0.5, "max_length": 512})
+        self.alpaca_llm = HuggingFaceHub(repo_id="reasonwang/google-flan-t5-small-alpaca", model_kwargs={"temperature": 0.1, "max_length": 512})
+        self.TodoParserBot = LLMChatBot(email, password, default_system_prompt= 'todo_parser_prompt') if email and password else None
+        self.AvancedRagChatBot = LLMChatBot(email, password, default_system_prompt= 'default_rag_prompt') if email and password else None
+
+        rp("create_indexed_vectorstore:")
+        print(self.alpaca_llm("What is Deep Learning?"))  
 
         self.vectorstore, self.docstore, self.index = self.create_indexed_vectorstore(self.chunk_size)
 
@@ -265,8 +276,7 @@ class AdvancedVectorStore:
         self.setup_folders()     
         self.setup_logging(log_level,os.path.join(self.logs_dir,self.log_file))
         self.logger.info("Initializing AdvancedVectorStore")
-        self.set_bot_role()
-
+        self.conv_id = self.AvancedRagChatBot.chatbot.new_conversation(modelIndex=1,system_prompt=prompts['default_rag_prompt'],switch_to=True)
     
     def setup_logging(self,level,file):
         self.logger = logging.getLogger(__name__)
@@ -299,17 +309,6 @@ class AdvancedVectorStore:
         ]
         for d in self.dirs:
             os.makedirs(d, exist_ok=True)
-
-    def set_bot_role(self,prompt='default_rag_prompt',context="",history=""):
-        self.chatbot_llm.current_system_prompt = prompts[prompt].replace("<<VSCONTEXT>>",context).replace("<<WSCONTEXT>>",history)
-        self.current_conversation_id=self.chatbot_llm.chatbot.new_conversation(system_prompt=self.chatbot_llm.current_system_prompt,
-                                                                               modelIndex=self.chatbot_llm.current_model,
-                                                                               switch_to=True)
-        #self.logger.info(f"Setting Bot Role!\n[{prompt}]")
-        """ result=self.chatbot_llm("Confirm you understand the TASK.")
-        self.logger.info(f"Test results chatbot role set:{result}") """
-        #rp(f"[Result:{result}]")
-        
 
     def load_documents(self, directory: str) -> None:
         """Load documents from a directory with specific loaders for each file type."""
@@ -377,19 +376,20 @@ class AdvancedVectorStore:
         )
         rp("Indexed vectorstore created.")
         return vectorstore, docstore, index
-      
-    def get_self_query_retriever(self, k = 4) -> SelfQueryRetriever:
+       
+    def get_self_query_retriever(self, k: int = 4) -> SelfQueryRetriever:
         """Get a SelfQueryRetriever."""
         if not self.vectorstore:
             raise ValueError("Vectorstore not initialized. Call create_vectorstore() first.")
         return SelfQueryRetriever.from_llm(
-            self.chatbot_llm.chatbot,
+            self.AvancedRagChatBot.chatbot,
             self.vectorstore,
             document_contents="Document about various topics.",
             metadata_field_info=[],
             search_kwargs={"k": k}
         )
-    def get_contextual_t5_compression_retriever(self, k = 4, similarity_threshold=0.78) -> ContextualCompressionRetriever:
+
+    def get_contextual_t5_compression_retriever(self, k: int = 4, similarity_threshold=0.78) -> ContextualCompressionRetriever:
         """Get a ContextualCompressionRetriever."""
         base_compressor = LLMChainExtractor.from_llm(self.llm)
         redundant_filter = EmbeddingsRedundantFilter(embeddings=self.embeddings, similarity_threshold=similarity_threshold)
@@ -402,7 +402,7 @@ class AdvancedVectorStore:
     
     def get_contextual_qwen_compression_retriever(self, k=4, similarity_threshold=0.78):
         # Initialize the components for the compressor pipeline
-        base_compressor = LLMChainExtractor.from_llm(self.qwen_llm)
+        base_compressor = LLMChainExtractor.from_llm(self.AvancedRagChatBot)
         redundant_filter = EmbeddingsRedundantFilter(embeddings=self.embeddings, similarity_threshold=similarity_threshold)
         relevant_filter = EmbeddingsFilter(embeddings=self.embeddings, similarity_threshold=similarity_threshold)
         # Create the ContextualCompressionRetriever
@@ -412,7 +412,7 @@ class AdvancedVectorStore:
             base_retriever=self.get_basic_retriever(k=k)
         )
     
-    def get_contextual_compression_retriever(self, k = 4,similarity_threshold=0.78) -> ContextualCompressionRetriever:
+    def get_contextual_compression_retriever(self, k: int = 4,similarity_threshold=0.78) -> ContextualCompressionRetriever:
         """Get a ContextualCompressionRetriever."""
         base_compressor = LLMChainExtractor.from_llm(self.alpaca_llm)
         redundant_filter = EmbeddingsRedundantFilter(embeddings=self.embeddings, similarity_threshold=similarity_threshold)
@@ -423,18 +423,18 @@ class AdvancedVectorStore:
             base_retriever=self.get_basic_retriever(k=k)
         )
     
-    def get_basic_retriever(self, k = 4) -> VectorStore:
+    def get_basic_retriever(self, k: int = 4) -> VectorStore:
         """Get a basic retriever from the vectorstore."""
         if not self.vectorstore:
             raise ValueError("Vectorstore not initialized. Call create_vectorstore() first.")
         return self.vectorstore.as_retriever(search_kwargs={"k": k})
-    def get_multi_query_retriever(self, k = 4) -> MultiQueryRetriever:
+    def get_multi_query_retriever(self, k: int = 4) -> MultiQueryRetriever:
         """Get a MultiQueryRetriever."""
         if not self.vectorstore:
             raise ValueError("Vectorstore not initialized. Call create_vectorstore() first.")
         return MultiQueryRetriever.from_llm(
             retriever=self.vectorstore.as_retriever(search_kwargs={"k": k}),
-            llm=self.chatbot_llm
+            llm=self.AvancedRagChatBot
         )
     def get_timed_retriever(self, k=1, decay_rate=0.0000000000000000000000001):
         return TimeWeightedVectorStoreRetriever(
@@ -457,10 +457,9 @@ class AdvancedVectorStore:
         else:
             retriever = self.get_basic_retriever(k)
 
-        #rp(retriever.get_prompts)
         return retriever
 
-    def search(self, query: str, mode='basic', retriever: Optional[Any] = None, k = 4, sim_rate: float = 0.78) -> List[Document]:
+    def search(self, query: str, mode='basic', retriever: Optional[Any] = None, k: int = 4, sim_rate: float = 0.78) -> List[Document]:
         """Search the vectorstore using the specified retriever."""
         if not retriever:
             retriever = self.set_current_retriever(mode=mode, k=k, sim_rate=sim_rate)
@@ -530,7 +529,7 @@ class AdvancedVectorStore:
         if not retriever:
             retriever = self.get_basic_retriever()
         
-        combine_docs_chain = create_stuff_documents_chain(self.chatbot_llm, prompt=prompts[prompt])
+        combine_docs_chain = create_stuff_documents_chain(self.AvancedRagChatBot, prompt=prompts[prompt])
         return create_retrieval_chain(retriever, combine_docs_chain)
 
     def run_retrieval_chain(self, chain: Any, query: str) -> Dict[str, Any]:
@@ -689,7 +688,7 @@ class AdvancedVectorStore:
         
         self.set_bot_role(context=context,history=history)
         
-        return self.chatbot_llm(text)
+        return self.AvancedRagChatBot(text)
     
     def chat(self, message: str) -> str:
         """
@@ -698,27 +697,27 @@ class AdvancedVectorStore:
         :param message: The message to send to the bot
         :return: The bot's response
         """
-        if not self.chatbot_llm:
+        if not self.AvancedRagChatBot:
             raise ValueError("HugChat bot not initialized. Provide email and password when creating AdvancedVectorStore.")
-        return self.chatbot_llm.chat(message)
+        return self.AvancedRagChatBot.chat(message)
 
     def setup_speech_recognition(self):
         """Set up speech recognition for the HugChat bot."""
-        if not self.chatbot_llm:
+        if not self.AvancedRagChatBot:
             raise ValueError("HugChat bot not initialized. Provide email and password when creating AdvancedVectorStore.")
-        self.chatbot_llm.setup_speech_recognition()
+        self.AvancedRagChatBot.setup_speech_recognition()
 
     def setup_tts(self, model_name="tts_models/en/ljspeech/fast_pitch"):
         """Set up text-to-speech for the HugChat bot."""
-        if not self.chatbot_llm:
+        if not self.AvancedRagChatBot:
             raise ValueError("HugChat bot not initialized. Provide email and password when creating AdvancedVectorStore.")
-        self.chatbot_llm.setup_tts(model_name)
+        self.AvancedRagChatBot.setup_tts(model_name)
 
     def voice_chat(self):
         """
         Initiate a voice chat session with the HugChat bot.
         """
-        if not self.chatbot_llm or not hasattr(self.chatbot_llm, 'recognizer') or not hasattr(self.chatbot_llm, 'tts'):
+        if not self.AvancedRagChatBot or not hasattr(self.AvancedRagChatBot, 'recognizer') or not hasattr(self.AvancedRagChatBot, 'tts'):
             raise ValueError("Speech recognition and TTS not set up. Call setup_speech_recognition() and setup_tts() first.")
 
         rp("Voice chat initiated. Speak your message (or say 'exit' to end the chat).")
@@ -726,10 +725,10 @@ class AdvancedVectorStore:
         while True:
             with speech_recognition.Microphone() as source:
                 rp("Listening...")
-                audio = self.chatbot_llm.recognizer.listen(source)
+                audio = self.AvancedRagChatBot.recognizer.listen(source)
 
             try:
-                user_input = self.chatbot_llm.recognizer.recognize_google(audio)
+                user_input = self.AvancedRagChatBot.recognizer.recognize_google(audio)
                 rp(f"You said: {user_input}")
 
                 if user_input.lower() == 'exit':
@@ -741,7 +740,7 @@ class AdvancedVectorStore:
 
                 # Generate speech from the bot's response
                 speech_file = "bot_response.wav"
-                self.chatbot_llm.tts.tts_to_file(text=response, file_path=speech_file)
+                self.AvancedRagChatBot.tts.tts_to_file(text=response, file_path=speech_file)
                 playsound(speech_file)
                 os.remove(speech_file)  # Clean up the temporary audio file
 
@@ -812,7 +811,7 @@ class AdvancedVectorStore:
             #prompt = prompts['default_rag_prompt']
             self.set_bot_role(context=context, history=' '.join(conversation_history[-5:]))
             rp("# Step 4: Generate response using the chatbot")
-            response = self.chatbot_llm(f"User:{user_input}\n")
+            response = self.AvancedRagChatBot(f"User:{user_input}\n")
 
             rp(f"Chatbot: {response}")
 
@@ -865,15 +864,14 @@ if __name__ == "__main__":
     avs.load_documents_folder("/nr_ywo/coding/voice_chat_rag_web/venv/lib/python3.10/site-packages/langchain/agents")  
     avs.load_documents_folder("/nr_ywo/coding/voice_chat_rag_web/venv/lib/python3.10/site-packages/langchain_experimental/autonomous_agents")  
  
-    #avs.chatbot_llm.load_documents("/nr_ywo/coding/voice_chat_rag_web/test_input")
+
     # avs.load_github_repo("https://github.com/bxck75/voice_chat_rag_web")
     avs.save_vectorstore(path=avs.storage_dir)
     avs.load_vectorstore(path=avs.storage_dir)
     # rp document and chunk counts
     #rp(f"Total documents: {avs.chunk_count / avs.chunk_size}")
     #rp(f"Total chunks: {avs.chunk_count}")
-    #avs.logger.info(avs.chatbot_llm.current_model)
-    #avs.logger.info(avs.chatbot_llm.current_system_prompt)
+
 
     retriever=avs.set_current_retriever(mode='basic',k=4)
     comptriever=avs.set_current_retriever(mode='compression',k=4,sim_rate=0.87)

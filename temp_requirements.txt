@@ -1,0 +1,9 @@
+awesome-streamlit
+custom-streamlit
+streamlit-chat
+streamlit-chat-media
+streamlit-custom-chat
+streamlit-huggingface
+llm-huggingface
+huggingface-hub
+huggingface-tool

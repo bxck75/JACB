@@ -1,0 +1,55 @@
+
+Flask==3.0.3
+FastAPI==0.111.0
+
+
+numpy==1.22.0
+pandas==1.5.3
+scikit-learn==1.5.1
+matplotlib==3.8.4
+
+--find-links https://download.pytorch.org/whl/cpu
+torch --index-url https://download.pytorch.org/whl/cpu
+torchvision --index-url https://download.pytorch.org/whl/cpu
+torchaudio --index-url https://download.pytorch.org/whl/cpu
+
+spacy==3.7.5
+transformers==4.42.3
+huggingface-hub==0.23.4
+hugchat==0.4.9
+
+
+langchain==0.2.7
+langchain-community==0.2.7
+langchain-core==0.2.12
+langchain-experimental==0.0.62
+langchain-huggingface==0.0.3
+langchain-text-splitters==0.2.2
+langchainhub==0.1.20
+
+
+openai==1.35.13
+
+
+requests==2.32.3
+beautifulsoup4==4.12.3
+Pillow==10.4.0
+tqdm==4.66.4
+
+
+pyyaml==6.0.1
+jsonschema==4.23.0
+
+
+aiohttp==3.9.5
+asyncio  
+
+
+pytest==8.2.2
+
+# Web Scraping
+playwright==1.45.0
+
+# Data Visualization
+plotly==5.22.0
+streamlit==1.36.0
